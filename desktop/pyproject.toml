@@ -9,5 +9,8 @@ description = "Arvis: a native personal agent for the Linux desktop"
 requires-python = ">=3.12"
 dependencies = ["playwright>=1.55,<2"]
 
+[project.optional-dependencies]
+voice = ["sherpa-onnx==2.0.0", "numpy>=2,<3", "sentencepiece>=0.2,<1", "piper-phonemize==1.5.9"]
+
 [tool.setuptools.packages.find]
 include = ["arvis_desktop*"]
