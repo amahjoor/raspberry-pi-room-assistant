@@ -1,4 +1,8 @@
-# Raspberry Pi room presence and wake word
+# Arvis
+
+The new [desktop edition](desktop/README.md) builds Arvis into Omarchy Linux with local voice activation, persistent cloud-agent conversations, independent computer use, and a native desktop interface. Its runtime lives in `desktop/` and can be installed separately from the original Pi project.
+
+## Original Raspberry Pi room presence and wake word
 
 Arvis watches a PIR motion sensor, a webcam, and a microphone on a Raspberry Pi, then drives Kasa smart plugs and LEDs. Voice commands go through a wake-word detector (Porcupine or openWakeWord) and an OpenAI key for speech-to-text and the reply. You can run it with mock hardware and no Pi.
 
