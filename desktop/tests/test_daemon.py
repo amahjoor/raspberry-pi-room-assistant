@@ -87,6 +87,45 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
     def start_worker(self):
         self.app._tasks = [asyncio.create_task(self.app._worker())]
 
+    async def test_final_reply_replaces_commentary_stream_while_voice_is_speaking(self):
+        speaking, finish_speaking = asyncio.Event(), asyncio.Event()
+        spoken = []
+        reply = "The task is complete."
+
+        async def streamed_reply(text, images=None):
+            await self.app.on_event({"type": "delta", "text": "Checking the result…\n\n"})
+            await self.app.on_event({"type": "delta", "text": reply})
+            return reply
+
+        class HoldingVoice:
+            async def speak(self, text):
+                spoken.append(text)
+                speaking.set()
+                await finish_speaking.wait()
+
+            async def stop(self):
+                pass
+
+            async def interrupt(self):
+                finish_speaking.set()
+
+        self.backend.ask = AsyncMock(side_effect=streamed_reply)
+        self.app.voice = HoldingVoice()
+        self.start_worker()
+        await self.app.submit("Complete the task", source="voice")
+        await asyncio.wait_for(speaking.wait(), 1)
+        try:
+            state = await self.app.dispatch("status", {})
+            self.assertEqual(state["activity"], "Speaking")
+            self.assertEqual(state["stream"], "")
+            self.assertEqual([item["text"] for item in state["history"] if item["role"] == "assistant"], [reply])
+            self.assertEqual(spoken, [reply])
+            self.assertIsNotNone(self.app.current_task)
+        finally:
+            finish_speaking.set()
+            await asyncio.wait_for(self.app.queue.join(), 1)
+        self.assertEqual([item["text"] for item in self.app.state["history"] if item["role"] == "assistant"], [reply])
+
     async def test_stop_cancels_active_job_discards_queued_jobs_and_can_run_again(self):
         self.start_worker()
         await self.app.submit("first")

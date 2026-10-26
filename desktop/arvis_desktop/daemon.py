@@ -90,6 +90,8 @@ class Arvis:
             self.state["voice_message"] = event.get("message", "")
             if "muted" in event:
                 self.state["muted"] = bool(event["muted"])
+            if "wake_ready" in event:
+                self.state["wake_ready"] = bool(event["wake_ready"])
         self.changed()
 
     async def start(self):
@@ -178,6 +180,10 @@ class Arvis:
         await self.ensure_backend()
         reply = await self.backend.ask(job["text"], images=job["images"])
         if reply:
+            # The stream may include commentary as well as the final answer.
+            # Replace it with the committed reply before speech keeps this
+            # turn active, so the chat does not display both copies.
+            self.state["stream"] = ""
             self.message("assistant", reply)
             self.state["activity"] = "Done"
             await self.notify("Arvis", reply)
