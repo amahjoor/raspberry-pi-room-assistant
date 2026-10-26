@@ -54,3 +54,8 @@ models/
 *.onnx
 !assets/wake_words/arvis.onnx
 
+# Desktop development state and downloaded runtime assets
+desktop/.runtime/
+desktop/.native-tools/
+desktop/.models/
+

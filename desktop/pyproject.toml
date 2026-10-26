@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "arvis-desktop"
+version = "0.1.0"
+description = "Arvis: a native personal agent for the Linux desktop"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["arvis_desktop*"]
