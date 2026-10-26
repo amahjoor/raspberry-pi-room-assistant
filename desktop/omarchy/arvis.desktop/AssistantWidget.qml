@@ -22,6 +22,7 @@ Ui.BarWidget {
   readonly property color accent: Commons.Color.accent
   property string commandError: ""
   property var commandQueue: []
+  property var currentCommand: []
   implicitWidth: label.implicitWidth + Style.space(22)
   implicitHeight: barSize
 
@@ -35,14 +36,9 @@ Ui.BarWidget {
     var args = commandQueue[0]
     commandQueue = commandQueue.slice(1)
     commandError = ""
+    currentCommand = args
     action.command = [commandPath].concat(args)
     action.running = true
-  }
-  function submit() {
-    var text = prompt.text.trim()
-    if (!text) return
-    send(["ask", text])
-    prompt.text = ""
   }
   function load(raw) {
     try { status = JSON.parse(raw) } catch (e) { commandError = "Cannot read Arvis status" }
@@ -56,12 +52,6 @@ Ui.BarWidget {
     if (status.voice === "speaking") return "Speaking"
     return status.voice_message || status.voice || "Ready"
   }
-  function requestText(item) {
-    if (!item) return ""
-    var p = item.details || {}
-    if (p.questions) return p.questions.map(q => q.question + (q.options ? "\n" + q.options.map(o => "• " + o.label + ": " + o.description).join("\n") : "")).join("\n\n")
-    return (p.reason || "Arvis needs permission for this action.") + "\n\n" + (p.command || JSON.stringify(p, null, 2))
-  }
 
   FileView {
     id: stateFile
@@ -74,14 +64,19 @@ Ui.BarWidget {
   IpcHandler {
     target: "arvis-view-" + (root.QsWindow.window && root.QsWindow.window.screen ? root.QsWindow.window.screen.name : "pending")
     function status(): string {
-      return JSON.stringify({revision: "0.1.2", monitor: panel.screen ? panel.screen.name : "", requestedMonitor: root.status.panel_monitor || "", opened: root.opened, visible: panel.visible, focusPrimed: panel.focusPrimed, exclusiveFocus: panel.WlrLayershell.keyboardFocus === WlrKeyboardFocus.Exclusive})
+      return JSON.stringify({revision: "0.2.0", monitor: panel.screen ? panel.screen.name : "", requestedMonitor: root.status.panel_monitor || "", opened: root.opened, visible: panel.visible, focusPrimed: panel.focusPrimed, exclusiveFocus: panel.WlrLayershell.keyboardFocus === WlrKeyboardFocus.Exclusive})
     }
   }
   Timer { interval: 5000; running: true; repeat: true; onTriggered: { root.clock = Date.now()/1000; stateFile.reload() } }
   Process {
     id: action
     stderr: StdioCollector { onStreamFinished: if (text.trim()) root.commandError = text.trim() }
-    onExited: { stateFile.reload(); Qt.callLater(root.pump) }
+    onExited: function(exitCode, exitStatus) {
+      if (exitCode !== 0 && !root.commandError) root.commandError = "Arvis could not complete that request. Your draft is still here."
+      chat.commandFinished(root.currentCommand, exitCode === 0)
+      stateFile.reload()
+      Qt.callLater(root.pump)
+    }
   }
 
   Row {
@@ -121,8 +116,8 @@ Ui.BarWidget {
     screen: root.QsWindow.window ? root.QsWindow.window.screen : null
     anchors { top: true; right: true }
     margins { top: 48; right: 18 }
-    implicitWidth: Math.min(570, screen ? screen.width - 36 : 570)
-    implicitHeight: Math.min(680, screen ? screen.height - 90 : 680)
+    implicitWidth: Math.min(610, screen ? screen.width - 36 : 610)
+    implicitHeight: Math.min(790, screen ? screen.height - 90 : 790)
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.namespace: "arvis-assistant"
@@ -137,7 +132,7 @@ Ui.BarWidget {
       focusPrimed = false
       if (visible) {
         primeFocus()
-        Qt.callLater(() => { if (panel.visible) prompt.forceActiveFocus() })
+        Qt.callLater(() => { if (panel.visible) chat.focusComposer() })
       }
     }
     onBackingWindowVisibleChanged: primeFocus()
@@ -150,107 +145,21 @@ Ui.BarWidget {
     Rectangle {
       anchors.fill: parent
       color: Commons.Color.popups.background
-      radius: Style.cornerRadius
-      border.color: Commons.Color.popups.border
+      radius: 18
+      border.color: Qt.rgba(Commons.Color.foreground.r, Commons.Color.foreground.g, Commons.Color.foreground.b, 0.13)
       border.width: 1
-      Column {
+      ConversationView {
+        id: chat
         anchors.fill: parent
-        anchors.margins: 22
-        spacing: 14
-        Row {
-          width: parent.width
-          spacing: 12
-          Column {
-            width: parent.width - 65
-            spacing: 4
-            Text { text: "ARVIS"; color: Commons.Color.foreground; font.pixelSize: 19; font.weight: Font.DemiBold; font.letterSpacing: 3 }
-            Text { text: root.busy ? root.status.activity || "Working" : root.voiceLabel(); color: root.accent; font.pixelSize: 12; width: parent.width; elide: Text.ElideRight; textFormat: Text.PlainText }
-          }
-          Button { text: "×"; onClicked: root.close() }
-        }
-        Rectangle { width: parent.width; height: 1; color: Commons.Color.popups.border }
-        Flickable {
-          id: conversation
-          width: parent.width
-          height: Math.max(140, panel.height - 260 - (root.status.pending && root.status.pending.length ? 180 : 0))
-          contentWidth: width
-          contentHeight: messages.height
-          clip: true
-          boundsBehavior: Flickable.StopAtBounds
-          onContentHeightChanged: contentY = Math.max(0, contentHeight - height)
-          Column {
-            id: messages
-            width: parent.width
-            spacing: 18
-            Text {
-              visible: !root.status.history || root.status.history.length === 0
-              text: "What are we working on?\n\nAsk me to investigate something, work in my own browser, or keep an eye on a task."
-              width: parent.width
-              color: Commons.Color.foreground
-              opacity: 0.7
-              font.pixelSize: 14
-              wrapMode: Text.Wrap
-            }
-            Repeater {
-              model: (root.status.history || []).slice(-30)
-              delegate: Column {
-                required property var modelData
-                width: messages.width
-                spacing: 5
-                Text { text: modelData.role === "user" ? "YOU" : modelData.role === "error" ? "NEEDS ATTENTION" : "ARVIS"; color: modelData.role === "user" ? Commons.Color.foreground : root.accent; opacity: 0.75; font.pixelSize: 10; font.letterSpacing: 1.3 }
-                Text { text: modelData.text; width: parent.width; color: Commons.Color.foreground; font.pixelSize: 14; wrapMode: Text.Wrap; textFormat: Text.PlainText }
-              }
-            }
-            Text { visible: !!root.status.stream; text: root.status.stream || ""; width: parent.width; color: Commons.Color.foreground; font.pixelSize: 14; wrapMode: Text.Wrap; textFormat: Text.PlainText }
-            Column {
-              visible: !!root.status.preview
-              width: parent.width
-              spacing: 6
-              Text { text: "LATEST WORKER VIEW"; color: root.accent; font.pixelSize: 10; font.letterSpacing: 1.3 }
-              Image {
-                width: parent.width
-                height: width * 0.625
-                source: root.status.preview ? "file://" + root.status.preview + "?v=" + root.status.preview_at : ""
-                cache: false
-                asynchronous: true
-                fillMode: Image.PreserveAspectFit
-              }
-            }
-          }
-        }
-        Column {
-          id: approvalColumn
-          width: parent.width
-          spacing: 8
-          visible: root.status.pending && root.status.pending.length > 0
-          property var item: visible ? root.status.pending[0] : ({details: {}})
-          Text { text: "YOUR INPUT"; color: root.accent; font.pixelSize: 11; font.letterSpacing: 1 }
-          Flickable {
-            width: parent.width; height: 80; contentHeight: approvalText.height; clip: true
-            Text { id: approvalText; width: parent.width; text: root.requestText(approvalColumn.item); color: Commons.Color.foreground; font.pixelSize: 12; wrapMode: Text.Wrap; textFormat: Text.PlainText }
-          }
-          Row {
-            spacing: 8
-            Button { text: "Allow once"; visible: !parent.parent.item.details.questions; onClicked: root.send(["respond", parent.parent.item.id, "allow"]) }
-            Button { text: "Decline"; onClicked: root.send(["respond", parent.parent.item.id, "deny"]) }
-            TextField { id: response; width: 230; visible: !!parent.parent.item.details.questions; placeholderText: "Your answer…"; onAccepted: { root.send(["respond", parent.parent.item.id, "answer", text]); text = "" } }
-          }
-        }
-        TextField {
-          id: prompt
-          width: parent.width
-          placeholderText: root.busy ? "Add a task to the queue…" : "Ask Arvis…"
-          onAccepted: root.submit()
-          Keys.onEscapePressed: root.close()
-        }
-        Row {
-          spacing: 8
-          Button { text: "Speak"; enabled: !root.busy; onClicked: root.send(["activate"]) }
-          Button { text: root.status.muted ? "Unmute" : "Mute"; onClicked: root.send(["mute"]) }
-          Button { text: "Stop"; onClicked: root.send(["cancel"]) }
-          Button { text: "New chat"; enabled: !root.busy; onClicked: root.send(["new-conversation"]) }
-        }
-        Text { visible: !!root.commandError; text: root.commandError; width: parent.width; color: "#fca5a5"; wrapMode: Text.Wrap; font.pixelSize: 11; textFormat: Text.PlainText }
+        anchors.margins: 1
+        status: root.status
+        online: root.online
+        commandError: root.commandError
+        backgroundColor: Commons.Color.popups.background
+        foregroundColor: Commons.Color.foreground
+        accentColor: root.accent
+        onCommand: function(args) { root.send(args) }
+        onCloseRequested: root.close()
       }
     }
   }

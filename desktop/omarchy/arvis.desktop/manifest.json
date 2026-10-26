@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "arvis.desktop",
   "name": "Arvis",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "author": "Arman",
   "description": "Your personal desktop agent, with local voice activation and independent browser work",
   "kinds": ["bar-widget"],

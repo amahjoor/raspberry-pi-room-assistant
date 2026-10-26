@@ -9,7 +9,7 @@ It combines a local **Arvis** wake word, local speech recognition and spoken rep
 | Action | How |
 |---|---|
 | Speak | Say **Arvis**, or press **Super+Alt+A**, then speak |
-| Open conversation | Click Arvis in the bar, or **Super+Ctrl+Alt+A** |
+| Open / close conversation | Click Arvis in the bar, or **Super+Ctrl+Alt+A**; **Escape** also closes it |
 | Stop current and queued work | **Super+Ctrl+Escape**, or `arvis-pc cancel` |
 | Pause microphone | Right-click Arvis in the bar, or `arvis-pc mute` |
 | Send a typed request | `arvis-pc ask "Investigate the preview issue in my Kits project"` |
@@ -18,6 +18,8 @@ It combines a local **Arvis** wake word, local speech recognition and spoken rep
 | Disable automatic startup | `systemctl --user disable --now arvis` |
 
 The small native conversation view is optional. Voice requests run without opening it. Approval requests or questions appear there when a task needs your input. Stopping Arvis interrupts the agent, speech, and its independent workers. Process monitors remain active until their watched processes end or the service stops.
+
+The chat view has user bubbles, selectable assistant replies with basic Markdown formatting, and a multiline composer. **Enter** sends; **Shift+Enter** adds a line. Voice, microphone pause, and send/stop controls sit in the composer; New Chat is in the header. Follow-up messages can queue while Arvis works. Scrolling up holds your reading position; **Latest** returns to the live reply. Failed sends keep your draft. Worker screenshots expand inside the conversation.
 
 Examples:
 
@@ -88,6 +90,11 @@ Idle microphone processing stays local. After activation, the transcribed reques
 
 ```bash
 PYTHONPATH=. .venv/bin/python -m unittest discover -s tests -v
+# Chat formatting and interaction checks; no microphone or live agent calls.
+node tests/test_chat_format.mjs
+env -u DISPLAY -u WAYLAND_DISPLAY QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= \
+  QT_QUICK_CONTROLS_STYLE=Basic QT_QUICK_BACKEND=software \
+  /usr/lib/qt6/bin/qmltestrunner -input tests/qml -o -,txt
 # Explicit live check: local fixture plus real cloud agent (uses account quota).
 PYTHONPATH=. .venv/bin/python tests/smoke_agent.py --run
 # Local synthetic speech test; never plays audio or records the microphone.
