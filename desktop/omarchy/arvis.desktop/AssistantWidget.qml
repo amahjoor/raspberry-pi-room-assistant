@@ -74,7 +74,7 @@ Ui.BarWidget {
   IpcHandler {
     target: "arvis-view-" + (root.QsWindow.window && root.QsWindow.window.screen ? root.QsWindow.window.screen.name : "pending")
     function status(): string {
-      return JSON.stringify({revision: "0.1.1", monitor: panel.screen ? panel.screen.name : "", requestedMonitor: root.status.panel_monitor || "", opened: root.opened, visible: panel.visible})
+      return JSON.stringify({revision: "0.1.2", monitor: panel.screen ? panel.screen.name : "", requestedMonitor: root.status.panel_monitor || "", opened: root.opened, visible: panel.visible, focusPrimed: panel.focusPrimed, exclusiveFocus: panel.WlrLayershell.keyboardFocus === WlrKeyboardFocus.Exclusive})
     }
   }
   Timer { interval: 5000; running: true; repeat: true; onTriggered: { root.clock = Date.now()/1000; stateFile.reload() } }
@@ -113,6 +113,10 @@ Ui.BarWidget {
 
   PanelWindow {
     id: panel
+    property bool focusPrimed: false
+    function primeFocus() {
+      if (visible && backingWindowVisible && root.status.panel_focus) focusPrimeTimer.restart()
+    }
     visible: root.opened && screen && screen.name === (root.status.panel_monitor || (Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : ""))
     screen: root.QsWindow.window ? root.QsWindow.window.screen : null
     anchors { top: true; right: true }
@@ -123,8 +127,25 @@ Ui.BarWidget {
     exclusionMode: ExclusionMode.Ignore
     WlrLayershell.namespace: "arvis-assistant"
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: root.status.panel_focus ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand
-    onVisibleChanged: if (visible) Qt.callLater(() => prompt.forceActiveFocus())
+    // A persistent Exclusive grab also captures pointer input in Hyprland,
+    // preventing a second click on the bar. Prime keyboard focus briefly,
+    // then let pointer events reach the bar and other applications again.
+    WlrLayershell.keyboardFocus: !visible ? WlrKeyboardFocus.None
+      : root.status.panel_focus && !focusPrimed ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand
+    onVisibleChanged: {
+      focusPrimeTimer.stop()
+      focusPrimed = false
+      if (visible) {
+        primeFocus()
+        Qt.callLater(() => { if (panel.visible) prompt.forceActiveFocus() })
+      }
+    }
+    onBackingWindowVisibleChanged: primeFocus()
+    Timer {
+      id: focusPrimeTimer
+      interval: 75
+      onTriggered: if (panel.visible) panel.focusPrimed = true
+    }
 
     Rectangle {
       anchors.fill: parent
